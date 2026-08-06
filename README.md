@@ -10,7 +10,7 @@ The tools change per project based on what the problem actually calls for, Make.
 - Direct REST/HTTP API integration, with and without prebuilt connectors
 - LLM integration for classification, scoring, and generation tasks, provider chosen per project on cost and output quality, not defaulted to one vendor
 - Structured data handling across nested API responses (JSON parsing, field mapping)
-- Failure-path design: independent error handling per external call, not just happy-path logic, the same failure-isolation principle that matters whether a system is processing ten transactions a day or ten thousand
+- Failure-path design: Independent error handling per external call, so a single failed API call doesn't take down the rest of the process. The same principle applies whether a system processes ten transactions a day or ten thousand.
 - Cost modeling and tool-selection tradeoffs, documented per project, including where the architecture would need to change at higher scale (database over spreadsheet, queued processing over synchronous calls, multi-tenant data isolation)
 
 ## Projects
