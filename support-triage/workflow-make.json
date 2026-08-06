@@ -2256,7 +2256,7 @@
                                     "6": "{{7.urgency}}",
                                     "7": "{{7.confidence}}",
                                     "8": "{{15.draft_reply}}",
-                                    "9": "pending"
+                                    "9": "{{if(7.confidence >= 0.7; \"High Confidence\"; \"Low Confidence\")}}"
                                 },
                                 "sheetId": "Sheet1",
                                 "spreadsheetId": "/1Pl6Uv2dB-hNVriz8LZRdFJzhehF7uso72JataIzWAnY",
