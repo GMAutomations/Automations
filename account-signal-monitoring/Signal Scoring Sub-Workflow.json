@@ -1,0 +1,615 @@
+{
+  "name": "Signal Scoring Sub-Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: \"models/gemini-embedding-001\",\n  content: {\n    parts: [\n      { text: `${$('When Executed by Another Workflow').item.json.company_name}: ${$('When Executed by Another Workflow').item.json.signal_description}` }\n    ]\n  },\n  outputDimensionality: 768\n}) }}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -1024,
+        144
+      ],
+      "id": "9de0ea41-47bc-49ce-8410-9be1a3b2d532",
+      "name": "Embed Signal (Gemini)",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hngxyjitfhxwifanstvd.supabase.co/rest/v1/rpc/match_icp_chunks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer "
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  query_embedding: $json.embedding.values,\n  match_count: 3\n}) }}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -800,
+        0
+      ],
+      "id": "c8dc7356-249c-4a99-9952-307530a159f9",
+      "name": "Retrieve Matching ICP Chunks",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  contents: [\n    {\n      parts: [\n        {\n          text: `You are scoring a sales signal against a law firm's Ideal Customer Profile. Score the signal as Hot, Warm, or Cold based on how well it matches the ICP criteria below.\n\nICP criteria (retrieved as most relevant to this signal):\n${$input.all().map(item => item.json.content).join('\\n\\n')}\n\nSignal to score:\nCompany: ${$('When Executed by Another Workflow').item.json.company_name}\nSignal: ${$('When Executed by Another Workflow').item.json.signal_description}\nSource: ${$('When Executed by Another Workflow').item.json.source_url}\nDate detected: ${$('When Executed by Another Workflow').item.json.date_detected}\n\nScore this signal Hot if it shows a strong, time-sensitive buying trigger clearly matching the ICP. Score Warm if it shows partial fit or a weaker trigger. Score Cold if it does not match the ICP criteria or shows an explicit disqualifier. Give your reasoning first, then state the score on its own line as exactly one of: Hot, Warm, Cold.`\n        }\n      ]\n    }\n  ],\n  generationConfig: {\n    temperature: 0.1,\n    thinkingConfig: {\n      thinkingBudget: 512\n    }\n  }\n}) }}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -320,
+        -208
+      ],
+      "id": "996d572f-bc2d-4a52-bfbe-3af7b6c4ab04",
+      "name": "Score Signal Against ICP (Gemini)",
+      "executeOnce": false,
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "text = _items[0][\"json\"][\"candidates\"][0][\"content\"][\"parts\"][0][\"text\"]\n\nscore = \"Unknown\"\nlast_line = text.strip().split(\"\\n\")[-1]\nif \"Hot\" in last_line:\n    score = \"Hot\"\nelif \"Warm\" in last_line:\n    score = \"Warm\"\nelif \"Cold\" in last_line:\n    score = \"Cold\"\n\nreturn [{\n    \"json\": {\n        \"score\": score,\n        \"reasoning\": text\n    }\n}]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        -320
+      ],
+      "id": "ec4db61c-6ce7-4809-b6e1-d3feab5c283c",
+      "name": "Parse Score"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "20d671af-472a-42ef-8c6a-00cfbca687cf",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": "Hot",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        208,
+        -320
+      ],
+      "id": "b4304cf1-c9af-4c11-9aec-9e9da6e728ee",
+      "name": "Route by Score"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "sales-signal-alerts",
+          "mode": "name"
+        },
+        "text": "=High Priority Sales Signal Detected\n\nCompany: {{ $('When Executed by Another Workflow').item.json.company_name }}\nSignal: {{ $('When Executed by Another Workflow').item.json.signal_description }}\nSource: {{ $('When Executed by Another Workflow').item.json.source_url }}\nDate Detected: {{ $('When Executed by Another Workflow').item.json.date_detected }}\nScore: {{ $json.score }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.6,
+      "position": [
+        448,
+        -336
+      ],
+      "id": "e3186e1a-c687-4be3-aa16-dc18eff58333",
+      "name": "High Priority Signal Alert (Slack)",
+      "webhookId": "92432029-60b0-4438-9513-17033e730e1b",
+      "credentials": {
+        "slackApi": {
+          "id": "Q0082IOXeysZw76q",
+          "name": "Sales Signal Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "all_signals",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "company_name",
+              "condition": "eq",
+              "keyValue": "={{ $('When Executed by Another Workflow').item.json.source_url }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -1456,
+        144
+      ],
+      "id": "f1627645-8705-423b-9b65-bd636bab2d29",
+      "name": "Check for Duplicate Signal",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "5tE9a4E9EXjaawRT",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "all_signals",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "company_name",
+              "fieldValue": "={{ $('When Executed by Another Workflow').item.json.company_name }}"
+            },
+            {
+              "fieldId": "signal_description",
+              "fieldValue": "={{ $('When Executed by Another Workflow').item.json.signal_description }}"
+            },
+            {
+              "fieldId": "source_url",
+              "fieldValue": "={{ $('When Executed by Another Workflow').item.json.source_url }}"
+            },
+            {
+              "fieldId": "date_detected",
+              "fieldValue": "={{ $('When Executed by Another Workflow').item.json.date_detected }}"
+            },
+            {
+              "fieldId": "score",
+              "fieldValue": "={{ $json.score }}"
+            },
+            {
+              "fieldId": "reasoning",
+              "fieldValue": "={{ $json.reasoning }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        32,
+        -320
+      ],
+      "id": "ae6cc9be-decb-4dfa-ad21-317d0e66d1bc",
+      "name": "Log Signal",
+      "credentials": {
+        "supabaseApi": {
+          "id": "5tE9a4E9EXjaawRT",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "company_name"
+            },
+            {
+              "name": "signal_description"
+            },
+            {
+              "name": "source_url"
+            },
+            {
+              "name": "date_detected"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1664,
+        144
+      ],
+      "id": "89bc92f0-5ede-4c29-858b-0df6599e3700",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "sales-signal-errors",
+          "mode": "name"
+        },
+        "text": "=Signal Scoring Sub-Workflow error: Embed Signal failed.\nCompany: {{ $('When Executed by Another Workflow').item.json.company_name }}\nStatus: {{ $json.error?.status || $json.error?.httpCode || $json.error?.code || 'n/a' }}\nReason: {{ String($json.error?.details?.description || $json.error?.details?.message || $json.error?.message || 'Succeeded but returned no usable ICP chunks').slice(0, 300) }}\nExecution: {{ $execution.id ? `https://gmautomations.app.n8n.cloud/workflow/${$workflow.id}/executions/${$execution.id}` : 'n/a' }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.6,
+      "position": [
+        -800,
+        304
+      ],
+      "id": "7f72909d-e0e6-4ca4-9e6d-e267393d52f6",
+      "name": "Alert: Embedding Failed",
+      "webhookId": "45c093ca-d501-471e-a52c-c4ae0bf2e2e9",
+      "credentials": {
+        "slackApi": {
+          "id": "Q0082IOXeysZw76q",
+          "name": "Sales Signal Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "sales-signal-errors",
+          "mode": "name"
+        },
+        "text": "=Signal Scoring Sub-Workflow error: Score Signal Against ICP failed.\nCompany: {{ $('When Executed by Another Workflow').item.json.company_name }}\nStatus: {{ $json.error?.status || $json.error?.httpCode || $json.error?.code || 'n/a' }}\nReason: {{ String($json.error?.details?.description || $json.error?.details?.message || $json.error?.message || 'Succeeded but returned no usable ICP chunks').slice(0, 300) }}\nExecution: {{ $execution.id ? `https://gmautomations.app.n8n.cloud/workflow/${$workflow.id}/executions/${$execution.id}` : 'n/a' }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.6,
+      "position": [
+        -128,
+        -16
+      ],
+      "id": "6fb7b435-e483-4ea4-9803-448b7fc4d1bb",
+      "name": "Alert: Score Signal Against ICP Failed",
+      "webhookId": "a694c517-0cd7-4b57-8763-b02a91fe28bc",
+      "credentials": {
+        "slackApi": {
+          "id": "Q0082IOXeysZw76q",
+          "name": "Sales Signal Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "sales-signal-errors",
+          "mode": "name"
+        },
+        "text": "=Signal Scoring Sub-Workflow error: Retrieve Matching ICP failed.\nCompany: {{ $('When Executed by Another Workflow').item.json.company_name }}\nStatus: {{ $json.error?.status || $json.error?.httpCode || $json.error?.code || 'n/a' }}\nReason: {{ String($json.error?.details?.description || $json.error?.details?.message || $json.error?.message || 'Succeeded but returned no usable ICP chunks').slice(0, 300) }}\nExecution: {{ $execution.id ? `https://gmautomations.app.n8n.cloud/workflow/${$workflow.id}/executions/${$execution.id}` : 'n/a' }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.6,
+      "position": [
+        -432,
+        112
+      ],
+      "id": "5468b5e8-9b6f-4ea1-84ad-084a7729a5dc",
+      "name": "Alert: Retrieve Matching ICP Failed",
+      "webhookId": "97571126-69d1-45cc-917e-e091f1c5028c",
+      "credentials": {
+        "slackApi": {
+          "id": "Q0082IOXeysZw76q",
+          "name": "Sales Signal Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4fa2cdd3-5841-4ce3-9525-f8fa3a3b33b4",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -1232,
+        144
+      ],
+      "id": "03ac0b46-d2b6-412d-9455-c06148ace671",
+      "name": "Skip Duplicate Signals"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7e3abe6f-0f15-4001-9e84-eb6e4f0bde01",
+              "leftValue": "={{ $json.content }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -592,
+        -96
+      ],
+      "id": "89b115a9-2a54-455c-ace6-d52fbaafc807",
+      "name": "Require ICP Match"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        640,
+        -32
+      ],
+      "id": "c52fd58a-5d76-4d52-821c-c08235216b72",
+      "name": "Return to Caller"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Embed Signal (Gemini)": {
+      "main": [
+        [
+          {
+            "node": "Retrieve Matching ICP Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert: Embedding Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieve Matching ICP Chunks": {
+      "main": [
+        [
+          {
+            "node": "Require ICP Match",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert: Retrieve Matching ICP Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Signal Against ICP (Gemini)": {
+      "main": [
+        [
+          {
+            "node": "Parse Score",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert: Score Signal Against ICP Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Score": {
+      "main": [
+        [
+          {
+            "node": "High Priority Signal Alert (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return to Caller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Duplicate Signal": {
+      "main": [
+        [
+          {
+            "node": "Skip Duplicate Signals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Check for Duplicate Signal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Signal": {
+      "main": [
+        [
+          {
+            "node": "Route by Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Score": {
+      "main": [
+        [
+          {
+            "node": "Log Signal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Duplicate Signals": {
+      "main": [
+        [
+          {
+            "node": "Embed Signal (Gemini)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Require ICP Match": {
+      "main": [
+        [
+          {
+            "node": "Score Signal Against ICP (Gemini)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert: Retrieve Matching ICP Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "High Priority Signal Alert (Slack)": {
+      "main": [
+        [
+          {
+            "node": "Return to Caller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "b91cca18-7c0d-4e8d-8348-584c7be4494b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6c76c63a20fc151fef61687ac3ad846f9866144d47f744bef6dc0f3c43feb1f6"
+  },
+  "nodeGroups": [],
+  "id": "KEE81XNZ0xkD82Fd",
+  "tags": []
+}

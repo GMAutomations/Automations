@@ -1,0 +1,377 @@
+{
+  "name": "Signal Digest Delivery",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "fbd96434-c201-4083-893f-0bd9c1c04c63",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "all_signals",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "included_in_digest",
+              "condition": "eq",
+              "keyValue": "false"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "3c15e330-d921-45a5-b15a-d192afdfbb83",
+      "name": "Get Undigested Signals",
+      "credentials": {
+        "supabaseApi": {
+          "id": "5tE9a4E9EXjaawRT",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3939df5c-6216-4aae-833e-374b50020001",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": "Hot",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        0
+      ],
+      "id": "912409cf-aa62-453d-a8d7-1cca21056657",
+      "name": "Exclude Hot Signals"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6430c8ea-f994-4253-8647-f13c43954fbc",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        0
+      ],
+      "id": "14eff786-f95b-43b2-9dbc-bb1c159244fe",
+      "name": "Has Signals to Digest"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst warm = items.filter(i => i.json.score === 'Warm');\nconst cold = items.filter(i => i.json.score === 'Cold');\n\nlet message = `Daily Signal Digest — ${new Date().toISOString().split('T')[0]}\\n`;\nmessage += `${items.length} signal(s) reviewed, ${warm.length} Warm, ${cold.length} Cold\\n\\n`;\n\nif (warm.length > 0) {\n  message += `Warm Signals:\\n`;\n  warm.forEach(i => {\n    message += `- ${i.json.company_name}: ${i.json.signal_description.slice(0, 150)}\\n  ${i.json.source_url}\\n`;\n  });\n  message += `\\n`;\n}\n\nmessage += `Cold signals reviewed: ${cold.length} (no action needed)\\n`;\n\nreturn [{ json: { digest_text: message, ids: items.map(i => i.json.id) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -96
+      ],
+      "id": "3eed19b6-8f31-4e93-83b0-fa1741a692eb",
+      "name": "Format Digest Message"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "sales-signal-digest",
+          "mode": "name"
+        },
+        "text": "={{ $json.digest_text }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.6,
+      "position": [
+        1120,
+        -96
+      ],
+      "id": "d9e93fd9-53fd-4436-9d4e-006978403eaa",
+      "name": "Send Digest to Slack",
+      "webhookId": "f65d07a9-e67a-4edf-90be-035ae689454a",
+      "credentials": {
+        "slackApi": {
+          "id": "Q0082IOXeysZw76q",
+          "name": "Sales Signal Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1792,
+        -96
+      ],
+      "id": "53adc86c-52dc-4c4b-bb1f-dbed0124d5a2",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "ids",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        -96
+      ],
+      "id": "3497cc4d-8e96-482a-aaf7-3c992b9070f3",
+      "name": "Split Digest IDs"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "all_signals",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.ids }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "included_in_digest",
+              "fieldValue": "true"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        -80
+      ],
+      "id": "5fc84f8c-16ff-48be-a07e-81f12d2409da",
+      "name": "Mark as Digested",
+      "credentials": {
+        "supabaseApi": {
+          "id": "5tE9a4E9EXjaawRT",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "660e9991-2d53-4db4-be29-1ddad6c337a9",
+              "name": "ids",
+              "value": "={{ $('Format Digest Message').item.json.ids }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1344,
+        -96
+      ],
+      "id": "4e3c9754-dffa-41fe-911e-30f6f21e4635",
+      "name": "Restore IDs"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Undigested Signals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Undigested Signals": {
+      "main": [
+        [
+          {
+            "node": "Exclude Hot Signals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exclude Hot Signals": {
+      "main": [
+        [
+          {
+            "node": "Has Signals to Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Signals to Digest": {
+      "main": [
+        [
+          {
+            "node": "Format Digest Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Digest Message": {
+      "main": [
+        [
+          {
+            "node": "Send Digest to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Digest to Slack": {
+      "main": [
+        [
+          {
+            "node": "Restore IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Mark as Digested",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Digest IDs": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Digested": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore IDs": {
+      "main": [
+        [
+          {
+            "node": "Split Digest IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "28e5b3cb-2b94-4fb7-b4f1-a30af0f79338",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6c76c63a20fc151fef61687ac3ad846f9866144d47f744bef6dc0f3c43feb1f6"
+  },
+  "nodeGroups": [],
+  "id": "o9aN5I4amMQQMLiC",
+  "tags": []
+}
